@@ -1,0 +1,12 @@
+{
+  "name": "teeto-pipeline",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "crawl": "node src/crawl.ts",
+    "aggregate": "node src/aggregate.ts",
+    "patches": "node src/patches.ts",
+    "test": "node --test src/*.test.ts"
+  }
+}

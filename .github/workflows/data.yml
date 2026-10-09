@@ -1,0 +1,68 @@
+name: data
+
+on:
+  schedule:
+    - cron: "15 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: Crawl time in minutes
+        default: "45"
+
+concurrency:
+  group: data
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Restore crawl database
+        uses: actions/cache/restore@v4
+        with:
+          path: pipeline/teeto-data.db
+          key: crawl-db-${{ github.run_id }}
+          restore-keys: crawl-db-
+
+      - name: Crawl ranked games
+        env:
+          RIOT_API_KEY: ${{ secrets.RIOT_API_KEY }}
+          RIOT_KEY_KIND: ${{ vars.RIOT_KEY_KIND }}
+          PLATFORMS: ${{ vars.PLATFORMS || 'EUW1,EUN1,NA1,KR' }}
+          MAX_MINUTES: ${{ inputs.minutes || '45' }}
+        run: node src/crawl.ts
+        continue-on-error: true
+
+      - name: Save crawl database
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: pipeline/teeto-data.db
+          key: crawl-db-${{ github.run_id }}
+
+      - name: Aggregate champion stats
+        run: node src/aggregate.ts
+
+      - name: Fetch patch notes
+        run: node src/patches.ts
+
+      - name: Publish to data branch
+        working-directory: pipeline/out
+        run: |
+          git init -q -b data
+          git add .
+          git -c user.name="teeto-data" -c user.email="teeto-data@users.noreply.github.com" commit -qm "Data $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data
