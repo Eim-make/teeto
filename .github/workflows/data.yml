@@ -65,4 +65,8 @@ jobs:
           git init -q -b data
           git add .
           git -c user.name="teeto-data" -c user.email="teeto-data@users.noreply.github.com" commit -qm "Data $(date -u +%Y-%m-%dT%H:%MZ)"
-          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data
+          for attempt in 1 2 3; do
+            git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data && exit 0
+            sleep 10
+          done
+          exit 1
