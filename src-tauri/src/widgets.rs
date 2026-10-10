@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
+use tokio::sync::Notify;
 use ts_rs::TS;
 
 use crate::error::Result;
@@ -82,6 +83,7 @@ pub struct Widgets {
     file: PathBuf,
     settings: Mutex<WidgetSettings>,
     editing: Mutex<bool>,
+    wake: Notify,
 }
 
 impl Widgets {
@@ -92,7 +94,7 @@ impl Widgets {
             .and_then(|raw| serde_json::from_str::<WidgetSettings>(&raw).ok())
             .unwrap_or_default()
             .complete();
-        Widgets { file, settings: Mutex::new(settings), editing: Mutex::new(false) }
+        Widgets { file, settings: Mutex::new(settings), editing: Mutex::new(false), wake: Notify::new() }
     }
 
     pub fn settings(&self) -> WidgetSettings {
@@ -112,6 +114,7 @@ pub fn save(app: &AppHandle, settings: WidgetSettings) -> Result<WidgetSettings>
         *s = settings.clone();
     }
     app.emit("widget-settings", &settings)?;
+    widgets.wake.notify_one();
     Ok(settings)
 }
 
@@ -126,7 +129,7 @@ pub fn set_editing(app: &AppHandle, editing: bool) -> Result<()> {
         }
     }
     app.emit("widget-editing", editing)?;
-    sync(app)?;
+    app.state::<Widgets>().wake.notify_one();
     Ok(())
 }
 
@@ -189,7 +192,6 @@ fn sync(app: &AppHandle) -> Result<()> {
     }
     if !window.is_visible().unwrap_or(false) {
         window.set_ignore_cursor_events(!app.state::<Widgets>().editing())?;
-        window.set_content_protected(true)?;
         window.show()?;
     }
     Ok(())
@@ -198,7 +200,11 @@ fn sync(app: &AppHandle) -> Result<()> {
 pub async fn watch(app: AppHandle) {
     let mut was_in_game = false;
     loop {
-        tokio::time::sleep(WATCH_INTERVAL).await;
+        let widgets = app.state::<Widgets>();
+        tokio::select! {
+            _ = tokio::time::sleep(WATCH_INTERVAL) => {}
+            _ = widgets.wake.notified() => {}
+        }
         let now_in_game = in_game(&app);
         if was_in_game && !now_in_game && app.state::<Widgets>().editing() {
             let _ = set_editing(&app, false);

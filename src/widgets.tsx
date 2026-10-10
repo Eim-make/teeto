@@ -149,7 +149,7 @@ function Widgets() {
       className={`fixed inset-0 ${editing ? "bg-black/35" : "pointer-events-none"}`}
     >
       {editing && (
-        <div className="absolute top-3 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-line-strong bg-ink-900 px-3 py-2 text-[12px] text-soft shadow-lg">
+        <div className="absolute top-[38%] left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-line-strong bg-ink-900 px-3 py-2 text-[12px] text-soft shadow-lg">
           <span className="h-2 w-2 rounded-full bg-crimson" />
           <span>
             Drag widgets to move them. {!live && "Showing sample data. "}
