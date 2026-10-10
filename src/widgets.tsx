@@ -101,7 +101,15 @@ function Widgets() {
   const editing = useWidgetEditing();
   const live = useLiveGame();
   const drag = useRef<Drag | null>(null);
+  const unsaved = useRef(false);
   const game = live ?? (editing ? demo.inGame : null);
+
+  useEffect(() => {
+    if (editing || !unsaved.current || !settings) return;
+    drag.current = null;
+    unsaved.current = false;
+    save(settings);
+  }, [editing, settings, save]);
 
   if (!settings || !game) return null;
   if (!settings.enabled && !editing) return null;
@@ -109,6 +117,7 @@ function Widgets() {
   const move = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     if (!d) return;
+    if (e.buttons === 0) return end();
     const x = clamp(
       (e.clientX - d.dx) / window.innerWidth,
       1 - d.w / window.innerWidth,
@@ -117,6 +126,7 @@ function Widgets() {
       (e.clientY - d.dy) / window.innerHeight,
       1 - d.h / window.innerHeight,
     );
+    unsaved.current = true;
     setLocal({
       ...settings,
       widgets: settings.widgets.map((w) =>
@@ -141,6 +151,7 @@ function Widgets() {
   const end = () => {
     if (!drag.current) return;
     drag.current = null;
+    unsaved.current = false;
     save(settings);
   };
 
@@ -178,6 +189,7 @@ function Widgets() {
             onPointerMove={move}
             onPointerUp={end}
             onPointerCancel={end}
+            onLostPointerCapture={end}
             className={`absolute ${
               editing
                 ? `rounded-lg outline-1 outline-offset-2 ${widget.locked ? "outline-line-strong" : "cursor-move outline-dashed outline-crimson/70"}`

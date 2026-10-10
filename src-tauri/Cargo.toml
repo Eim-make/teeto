@@ -1,6 +1,6 @@
 [package]
 name = "teeto"
-version = "0.3.1"
+version = "0.3.2"
 description = "League of Legends companion"
 authors = ["eim"]
 edition = "2021"
