@@ -123,7 +123,7 @@ export function App() {
         <Sidebar page={route.section} onNavigate={navigate} />
         <main
           ref={main}
-          className="min-w-0 flex-1 overflow-y-auto p-4 2xl:px-8"
+          className="relative min-w-0 flex-1 overflow-y-auto p-4 2xl:px-8"
         >
           <div className="mx-auto max-w-[1680px]">{page()}</div>
         </main>

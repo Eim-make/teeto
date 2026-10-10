@@ -1,6 +1,6 @@
 [package]
 name = "teeto"
-version = "0.1.1"
+version = "0.1.2"
 description = "League of Legends companion"
 authors = ["eim"]
 edition = "2021"
@@ -31,6 +31,8 @@ xcap = { version = "0.9.8", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png"] }
 tauri-plugin-global-shortcut = "2"
 windows = { version = "0.62", features = ["Media_Ocr", "Graphics_Imaging", "Storage_Streams", "Foundation", "Foundation_Collections", "Globalization"] }
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 [profile.release]
 codegen-units = 1

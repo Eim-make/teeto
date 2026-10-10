@@ -118,6 +118,15 @@ export function championIcon(
     : null;
 }
 
+export function championSplash(
+  catalog: Catalog | null,
+  key: number | null,
+): string | null {
+  const champ =
+    catalog && key !== null ? catalog.champions[String(key)] : undefined;
+  return champ ? `${BASE}/cdn/img/champion/splash/${champ.id}_0.jpg` : null;
+}
+
 export function championName(
   catalog: Catalog | null,
   key: number | null,

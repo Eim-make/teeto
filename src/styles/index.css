@@ -53,3 +53,8 @@ body {
 .tabular {
   font-variant-numeric: tabular-nums;
 }
+
+.home-glass section {
+  background-color: rgb(18 18 18 / 0.82);
+  backdrop-filter: blur(8px);
+}

@@ -3,6 +3,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import type { ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { native } from "../lib/ipc";
+import { useUpdater, type UpdateState } from "./useUpdater";
 
 const win = native ? getCurrentWindow() : null;
 
@@ -41,7 +42,26 @@ function Control({
   );
 }
 
+function updateLabel(state: UpdateState): string | null {
+  switch (state.kind) {
+    case "checking":
+      return "Checking for updates…";
+    case "current":
+      return "Up to date";
+    case "downloading":
+      return `Downloading ${state.version}${state.progress !== null ? ` · ${Math.round(state.progress * 100)}%` : "…"}`;
+    case "installing":
+      return `Installing ${state.version}…`;
+    case "failed":
+      return "Update check failed";
+    default:
+      return null;
+  }
+}
+
 export function TitleBar() {
+  const updater = useUpdater();
+  const notice = updateLabel(updater.state);
   const [version, setVersion] = useState<string | null>(null);
   useEffect(() => {
     if (native) getVersion().then(setVersion).catch(() => setVersion(null));
@@ -57,7 +77,24 @@ export function TitleBar() {
       >
         <span className="h-2 w-2 rounded-full bg-crimson" />
         Teeto
-        {version && <span className="text-faint">{version}</span>}
+        {version && (
+          <button
+            onClick={updater.check}
+            title={updater.state.kind === "failed" ? updater.state.message : "Check for updates"}
+            className="cursor-pointer text-faint hover:text-soft"
+          >
+            {version}
+          </button>
+        )}
+        {notice && <span className="text-faint">{notice}</span>}
+        {updater.state.kind === "ready" && (
+          <button
+            onClick={() => void updater.install()}
+            className="cursor-pointer rounded bg-crimson px-2 py-0.5 text-white hover:bg-crimson-bright"
+          >
+            Restart to update to {updater.state.version}
+          </button>
+        )}
       </div>
       <div data-tauri-drag-region className="h-full flex-1" />
       <Control label="Minimize" onClick={() => win?.minimize()}>
