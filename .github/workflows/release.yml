@@ -1,9 +1,8 @@
 name: release
 
 on:
-  push:
-    tags: ["v*"]
-  workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -27,9 +26,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Teeto ${{ github.ref_name }}
-          releaseBody: |
-            Download `Teeto_*_x64-setup.exe` below and run it. Windows may warn that the app isn't signed yet: click **More info**, then **Run anyway**.
-          releaseDraft: false
-          prerelease: true
+          releaseId: ${{ github.event.release.id }}
