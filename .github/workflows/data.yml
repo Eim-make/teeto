@@ -60,13 +60,12 @@ jobs:
         run: node src/patches.ts
 
       - name: Publish to data branch
-        working-directory: pipeline/out
-        run: |
-          git init -q -b data
-          git add .
-          git -c user.name="teeto-data" -c user.email="teeto-data@users.noreply.github.com" commit -qm "Data $(date -u +%Y-%m-%dT%H:%MZ)"
-          for attempt in 1 2 3; do
-            git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data && exit 0
-            sleep 10
-          done
-          exit 1
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: pipeline/out
+          publish_branch: data
+          force_orphan: true
+          user_name: teeto-data
+          user_email: teeto-data@users.noreply.github.com
+          commit_message: Update data
