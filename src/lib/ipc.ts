@@ -13,6 +13,7 @@ import type { MatchFilter } from "./bindings/MatchFilter";
 import type { MatchSummary } from "./bindings/MatchSummary";
 import type { Queue } from "./bindings/Queue";
 import type { RankEntry } from "./bindings/RankEntry";
+import type { WidgetSettings } from "./bindings/WidgetSettings";
 import { demo } from "./demo";
 
 export const native = isTauri();
@@ -63,6 +64,8 @@ export type AppEvent = {
   "matches-changed": null;
   "augment-scan-error": string;
   "harvest-progress": HarvestProgress;
+  "widget-settings": WidgetSettings;
+  "widget-editing": boolean;
 };
 
 export function on<K extends keyof AppEvent>(

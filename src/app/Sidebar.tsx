@@ -6,7 +6,8 @@ export type Section =
   | "matches"
   | "lp"
   | "champions"
-  | "patches";
+  | "patches"
+  | "widgets";
 
 interface Item {
   page: Section;
@@ -49,6 +50,16 @@ const TOP: Item[] = [
     page: "patches",
     label: "Patch notes",
     icon: <path d="M6 3h6l3 3v11H6zM12 3v3h3M8.5 10h4M8.5 13h4" />,
+  },
+  {
+    page: "widgets",
+    label: "In-game widgets",
+    icon: (
+      <>
+        <rect x="3" y="4" width="14" height="12" rx="1.5" />
+        <path d="M6 7h4M6 13h3M12.5 11.5h2.5v2.5h-2.5z" />
+      </>
+    ),
   },
 ];
 

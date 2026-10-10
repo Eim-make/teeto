@@ -147,8 +147,11 @@ export const demo = {
     gameTime: 754,
     mode: "KIWI",
     map: 12,
+    me: `${NAMES[0]}#EUW`,
+    myGold: 1350,
     players: NAMES.map((name, i) => ({
       riotId: `${name}#EUW`,
+      position: ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"][i % 5] ?? "",
       champion: ["Teemo", "LeeSin", "Ahri", "Jinx", "Thresh", "Garen", "Khazix", "Zed", "Caitlyn", "Lulu"][i] ?? "Teemo",
       teamId: i < 5 ? 100 : 200,
       level: 9 + (i % 4),

@@ -2,4 +2,4 @@
 import type { InGamePlayer } from "./InGamePlayer";
 import type { ObjectiveTimer } from "./ObjectiveTimer";
 
-export type InGame = { gameTime: number, mode: string, map: number, players: Array<InGamePlayer>, timers: Array<ObjectiveTimer>, };
+export type InGame = { gameTime: number, mode: string, map: number, me: string, myGold: number, players: Array<InGamePlayer>, timers: Array<ObjectiveTimer>, };

@@ -8,6 +8,7 @@ import { LpPage } from "../features/lp/LpPage";
 import { MatchDetailPage } from "../features/matches/MatchDetailPage";
 import { MatchList } from "../features/matches/MatchList";
 import { PatchNotesPage } from "../features/patches/PatchNotesPage";
+import { WidgetsPage } from "../features/widgets/WidgetsPage";
 import { Sidebar, type Section } from "./Sidebar";
 import { TitleBar } from "./TitleBar";
 
@@ -113,6 +114,8 @@ export function App() {
         );
       case "patches":
         return <PatchNotesPage />;
+      case "widgets":
+        return <WidgetsPage />;
     }
   };
 

@@ -193,3 +193,23 @@ pub async fn in_game() -> Option<crate::ingame::InGame> {
 pub async fn scan_augments(app: tauri::AppHandle) -> Result<crate::overlay::AugmentScan> {
     crate::overlay::scan(&app).await
 }
+
+#[tauri::command]
+pub fn widget_settings(widgets: State<'_, crate::widgets::Widgets>) -> crate::widgets::WidgetSettings {
+    widgets.settings()
+}
+
+#[tauri::command]
+pub fn save_widget_settings(app: tauri::AppHandle, settings: crate::widgets::WidgetSettings) -> Result<crate::widgets::WidgetSettings> {
+    crate::widgets::save(&app, settings)
+}
+
+#[tauri::command]
+pub fn widget_editing(widgets: State<'_, crate::widgets::Widgets>) -> bool {
+    widgets.editing()
+}
+
+#[tauri::command]
+pub fn set_widget_editing(app: tauri::AppHandle, editing: bool) -> Result<()> {
+    crate::widgets::set_editing(&app, editing)
+}

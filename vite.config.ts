@@ -39,7 +39,7 @@ export default defineConfig(() => ({
   clearScreen: false,
   build: {
     rollupOptions: {
-      input: { main: resolve(import.meta.dirname, "index.html"), overlay: resolve(import.meta.dirname, "overlay.html") },
+      input: { main: resolve(import.meta.dirname, "index.html"), overlay: resolve(import.meta.dirname, "overlay.html"), widgets: resolve(import.meta.dirname, "widgets.html") },
     },
   },
   server: {

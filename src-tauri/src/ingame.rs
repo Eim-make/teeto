@@ -19,6 +19,7 @@ pub struct InGamePlayer {
     pub riot_id: String,
     pub champion: String,
     pub team_id: i32,
+    pub position: String,
     pub level: i32,
     pub items: Vec<i32>,
     pub gold: i32,
@@ -51,6 +52,8 @@ pub struct InGame {
     pub game_time: f64,
     pub mode: String,
     pub map: i32,
+    pub me: String,
+    pub my_gold: i32,
     pub players: Vec<InGamePlayer>,
     pub timers: Vec<ObjectiveTimer>,
 }
@@ -58,9 +61,18 @@ pub struct InGame {
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 struct AllGameData {
+    active_player: RawActivePlayer,
     all_players: Vec<RawPlayer>,
     events: RawEvents,
     game_data: RawGameData,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct RawActivePlayer {
+    riot_id: String,
+    summoner_name: String,
+    current_gold: f64,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -104,6 +116,7 @@ struct RawPlayer {
     riot_id_tag_line: String,
     summoner_name: String,
     team: String,
+    position: String,
     level: i32,
     items: Vec<RawItem>,
     scores: RawScores,
@@ -261,6 +274,7 @@ fn player(p: &RawPlayer) -> InGamePlayer {
         },
         champion: champion_id(&p.raw_champion_name),
         team_id: team(&p.team),
+        position: p.position.to_ascii_uppercase(),
         level: p.level,
         items: items.iter().map(|i| i.item_id).collect(),
         gold: p.items.iter().map(|i| i.price * i.count.max(1)).sum(),
@@ -291,6 +305,12 @@ fn build(data: &AllGameData) -> InGame {
         game_time: data.game_data.game_time,
         mode: data.game_data.game_mode.clone(),
         map: data.game_data.map_number,
+        me: if data.active_player.riot_id.is_empty() {
+            data.active_player.summoner_name.clone()
+        } else {
+            data.active_player.riot_id.clone()
+        },
+        my_gold: data.active_player.current_gold.floor() as i32,
         players: data.all_players.iter().map(player).collect(),
         timers: timers(data),
     }
@@ -315,9 +335,10 @@ mod tests {
     use super::*;
 
     const SAMPLE: &str = r#"{
+      "activePlayer": {"riotId": "Kaido#EUW", "currentGold": 1234.7},
       "allPlayers": [
         {"rawChampionName": "game_character_displayname_LeeSin", "riotId": "Kaido#EUW", "riotIdGameName": "Kaido", "riotIdTagLine": "EUW",
-         "team": "ORDER", "level": 9, "isDead": false, "respawnTimer": 0.0,
+         "team": "ORDER", "position": "JUNGLE", "level": 9, "isDead": false, "respawnTimer": 0.0,
          "items": [{"itemID": 3047, "count": 1, "price": 1100, "slot": 1}, {"itemID": 1036, "count": 2, "price": 350, "slot": 0}],
          "scores": {"kills": 3, "deaths": 1, "assists": 4, "creepScore": 90, "wardScore": 12.6},
          "runes": {"keystone": {"id": 8010}, "secondaryRuneTree": {"id": 8200}},
@@ -356,6 +377,7 @@ mod tests {
         let lee = &g.players[0];
         assert_eq!((lee.champion.as_str(), lee.team_id, lee.gold, lee.ward_score), ("LeeSin", 100, 1800, 13));
         assert_eq!(lee.items, vec![1036, 3047]);
+        assert_eq!((g.me.as_str(), g.my_gold, lee.position.as_str()), ("Kaido#EUW", 1234, "JUNGLE"));
         assert_eq!(lee.spells, vec!["SummonerFlash", "SummonerSmite"]);
         assert_eq!(g.players[1].team_id, 200);
 

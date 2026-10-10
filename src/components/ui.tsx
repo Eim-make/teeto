@@ -86,3 +86,27 @@ export function Empty({ title, body }: { title: string; body: string }) {
     </div>
   );
 }
+
+export function Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={`relative h-[18px] w-8 shrink-0 cursor-pointer rounded-full transition-colors ${checked ? "bg-crimson" : "bg-ink-700"}`}
+    >
+      <span
+        className={`absolute top-[3px] h-3 w-3 rounded-full bg-white transition-all ${checked ? "left-[17px]" : "left-[3px]"}`}
+      />
+    </button>
+  );
+}

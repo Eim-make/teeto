@@ -93,14 +93,14 @@ async fn load_library(dir: PathBuf) -> Result<Catalog> {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Rect {
-    x: i32,
-    y: i32,
-    width: u32,
-    height: u32,
+pub struct Rect {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
 }
 
-fn game_window() -> Option<Rect> {
+pub fn game_window() -> Option<Rect> {
     xcap::Window::all().ok()?.into_iter().find_map(|w| {
         let title = w.title().ok()?;
         if !title.contains(GAME_WINDOW) || w.is_minimized().unwrap_or(false) {

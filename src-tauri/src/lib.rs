@@ -16,6 +16,7 @@ mod overlay;
 mod runes;
 mod store;
 mod tracker;
+mod widgets;
 
 use std::sync::Arc;
 
@@ -60,11 +61,17 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn setup_hotkey(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+    let edit_widgets: Shortcut = widgets::SHORTCUT.parse()?;
     app.plugin(
         tauri_plugin_global_shortcut::Builder::new()
-            .with_handler(|app, _shortcut, event| {
-                if event.state() == ShortcutState::Pressed {
+            .with_handler(move |app, shortcut, event| {
+                if event.state() != ShortcutState::Pressed {
+                    return;
+                }
+                if shortcut == &edit_widgets {
+                    widgets::toggle_editing(app);
+                } else {
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move {
                         if let Err(err) = overlay::scan(&app).await {
@@ -76,6 +83,7 @@ fn setup_hotkey(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             .build(),
     )?;
     app.global_shortcut().register(overlay::SHORTCUT)?;
+    let _ = app.global_shortcut().register(edit_widgets);
     Ok(())
 }
 
@@ -90,6 +98,7 @@ pub fn run() {
             std::fs::create_dir_all(&dir)?;
             let store = Arc::new(Store::open(&dir.join("teeto.db"))?);
             let shared = Arc::new(Shared::default());
+            app.manage(widgets::Widgets::load(&dir));
             app.manage(AppState { store: store.clone(), shared: shared.clone(), scanner: Default::default(), harvester: Default::default() });
 
             let tracker = Tracker::new(app.handle().clone(), store, shared);
@@ -98,6 +107,7 @@ pub fn run() {
             setup_tray(app.handle())?;
             setup_hotkey(app.handle())?;
             tauri::async_runtime::spawn(overlay::watch(app.handle().clone()));
+            tauri::async_runtime::spawn(widgets::watch(app.handle().clone()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -115,6 +125,10 @@ pub fn run() {
             commands::in_game,
             commands::scan_augments,
             commands::harvest_mayhem,
+            commands::widget_settings,
+            commands::save_widget_settings,
+            commands::widget_editing,
+            commands::set_widget_editing,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start Teeto");

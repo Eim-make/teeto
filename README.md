@@ -16,12 +16,15 @@ That's it. Leave it running while you play.
 - **Match history** with a proper breakdown of each game: items, runes, damage, gold lead and the moments that mattered.
 - **Champion select help.** Builds for your pick, counter picks, and one click to set your runes and summoner spells.
 - **Live game info.** Everyone's rank, favourite champions and recent form, plus objective timers and timers for your team's Flash and other summoner spells.
+- **In-game widgets.** Gold lead, your core items, objective timers and CS per minute, drawn over the game. Move them, lock them, fade them or switch them off from the widgets page.
 - **ARAM Mayhem augments.** When the augment cards show up, Teeto puts a tier and pick rate above each card, even after a reroll.
 - **Champion stats and patch notes** that point out the changes to champions you actually play.
 
 ## A few tips
 
-- For the augment tiers to show up in game, set League to **Borderless** or **Windowed** (Settings → Video → Window Mode). Nothing can draw over fullscreen.
+- For the widgets and augment tiers to show up in game, set League to **Borderless** or **Windowed** (Settings → Video → Window Mode). Nothing can draw over fullscreen.
+- Press **Ctrl+Shift+O** in game to move the widgets around. Press it again (or click Done) when you're happy.
+- Teeto updates itself. When a new version is ready you'll see a button in the title bar to restart.
 - Your LP graph starts with the first ranked game you play with Teeto open. League doesn't keep older LP changes, so there's nothing to load from before.
 - Closing the Teeto window keeps it running in the tray so it can keep tracking. Right-click the tray icon to quit.
 
