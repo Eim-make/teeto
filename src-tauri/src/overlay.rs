@@ -173,6 +173,7 @@ async fn my_champion(app: &AppHandle) -> i32 {
 
 const WATCH_INTERVAL: Duration = Duration::from_millis(1000);
 const FULL_SEARCH_EVERY: u32 = 3;
+const MISSES_BEFORE_HIDE: u32 = 3;
 const MAYHEM_MODE: &str = "KIWI";
 
 async fn library(app: &AppHandle) -> Result<Arc<Catalog>> {
@@ -246,7 +247,14 @@ fn titles(shot: &RgbaImage, found: &[Found]) -> Vec<Option<String>> {
         .collect()
 }
 
-async fn detect(app: &AppHandle, allow_full: bool) -> Result<Option<(Rect, Vec<Found>, RgbaImage)>> {
+struct Detection {
+    rect: Rect,
+    found: Vec<Found>,
+    shot: RgbaImage,
+    partly_visible: bool,
+}
+
+async fn detect(app: &AppHandle, allow_full: bool) -> Result<Option<Detection>> {
     let Some(rect) = game_window() else { return Ok(None) };
     let shot = tauri::async_runtime::spawn_blocking(move || capture(rect))
         .await
@@ -254,14 +262,17 @@ async fn detect(app: &AppHandle, allow_full: bool) -> Result<Option<(Rect, Vec<F
     let library = library(app).await?;
     let known = stored_layout(app);
     let (w, h) = (shot.width(), shot.height());
-    let found = tauri::async_runtime::spawn_blocking({
+    let (found, partly_visible) = tauri::async_runtime::spawn_blocking({
         let shot = shot.clone();
         move || {
             let catalog = &library;
             let mut found = Vec::new();
+            let mut partly_visible = false;
             if let Some(layout) = known {
                 let quick = catalog.library.identify(&shot, &absolute(&layout, w, h));
-                if quick.iter().all(|f| f.score >= MATCH_THRESHOLD) {
+                let matched = quick.iter().filter(|f| f.score >= MATCH_THRESHOLD).count();
+                partly_visible = matched >= 2;
+                if matched == quick.len() {
                     found = quick;
                 }
             }
@@ -274,8 +285,12 @@ async fn detect(app: &AppHandle, allow_full: bool) -> Result<Option<(Rect, Vec<F
             if found.len() == 3 {
                 let titles = titles(&shot, &found);
                 resolve(&mut found, &catalog.meta, &titles);
+                let even = normalize_layout(&found.iter().map(|f| f.slot).collect::<Vec<_>>());
+                for (f, slot) in found.iter_mut().zip(even) {
+                    f.slot = slot;
+                }
             }
-            found
+            (found, partly_visible)
         }
     })
     .await
@@ -283,7 +298,7 @@ async fn detect(app: &AppHandle, allow_full: bool) -> Result<Option<(Rect, Vec<F
     if found.len() == 3 {
         remember_layout(app, relative(&found.iter().map(|f| f.slot).collect::<Vec<_>>(), w, h));
     }
-    Ok(Some((rect, found, shot)))
+    Ok(Some(Detection { rect, found, shot, partly_visible }))
 }
 
 fn to_scan(found: &[Found], champion_id: i32, message: Option<String>) -> AugmentScan {
@@ -298,7 +313,7 @@ fn to_scan(found: &[Found], champion_id: i32, message: Option<String>) -> Augmen
 }
 
 pub async fn scan(app: &AppHandle) -> Result<AugmentScan> {
-    let (rect, found, shot) =
+    let Detection { rect, found, shot, .. } =
         detect(app, true).await?.ok_or_else(|| Error::Server("the League game window isn't open".into()))?;
     let message = (found.len() < 3).then(|| "Couldn't spot the augment cards. Try again while they're on screen.".into());
     let scan = to_scan(&found, my_champion(app).await, message);
@@ -314,6 +329,7 @@ pub async fn watch(app: AppHandle) {
     let mut shown: Vec<i32> = Vec::new();
     let mut champion = 0;
     let mut mayhem: Option<bool> = None;
+    let mut misses: u32 = 0;
     loop {
         tokio::time::sleep(WATCH_INTERVAL).await;
         tick = tick.wrapping_add(1);
@@ -337,8 +353,11 @@ pub async fn watch(app: AppHandle) {
             continue;
         }
         let allow_full = shown.is_empty() && tick.is_multiple_of(FULL_SEARCH_EVERY);
-        let Ok(Some((rect, found, shot))) = detect(&app, allow_full).await else { continue };
+        let Ok(Some(Detection { rect, found, shot, partly_visible })) = detect(&app, allow_full).await else { continue };
         let ids: Vec<i32> = found.iter().map(|f| f.id).collect();
+        if found.len() == 3 || partly_visible {
+            misses = 0;
+        }
         if found.len() == 3 && ids != shown {
             if champion == 0 {
                 champion = my_champion(&app).await;
@@ -350,9 +369,13 @@ pub async fn watch(app: AppHandle) {
             if show(&app, rect, &scan).is_ok() {
                 shown = ids;
             }
-        } else if found.len() < 3 && !shown.is_empty() {
-            hide(&app);
-            shown.clear();
+        } else if found.len() < 3 && !partly_visible && !shown.is_empty() {
+            misses += 1;
+            if misses >= MISSES_BEFORE_HIDE {
+                hide(&app);
+                shown.clear();
+                misses = 0;
+            }
         }
     }
 }
