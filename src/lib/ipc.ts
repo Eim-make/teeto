@@ -18,6 +18,8 @@ import { demo } from "./demo";
 
 export const native = isTauri();
 
+const utcOffsetMin = () => -new Date().getTimezoneOffset();
+
 export const api = {
   clientStatus: (): Promise<ClientStatus> =>
     native ? invoke("client_status") : Promise.resolve(demo.status),
@@ -33,7 +35,7 @@ export const api = {
         ),
   matches: (filter: MatchFilter, limit: number, before?: number): Promise<MatchSummary[]> =>
     native
-      ? invoke("matches", { filter, limit, before: before ?? null })
+      ? invoke("matches", { filter, limit, before: before ?? null, utcOffsetMin: utcOffsetMin() })
       : Promise.resolve(demo.matchList(filter, limit, before)),
   liveGame: (): Promise<LiveGame | null> => (native ? invoke("live_game") : Promise.resolve(demo.live)),
   importRunes: (page: {
@@ -55,7 +57,7 @@ export const api = {
   harvestMayhem: (): Promise<HarvestProgress> =>
     native ? invoke("harvest_mayhem") : Promise.reject(new Error("Only available in the desktop app")),
   matchDetail: (gameId: number): Promise<MatchDetail> =>
-    native ? invoke("match_detail", { gameId }) : Promise.resolve(demo.detail(gameId)),
+    native ? invoke("match_detail", { gameId, utcOffsetMin: utcOffsetMin() }) : Promise.resolve(demo.detail(gameId)),
 };
 
 export type AppEvent = {

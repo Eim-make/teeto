@@ -241,6 +241,10 @@ function makeDetail(gameId: number, queueId: number, createdAt: number, myChamp:
       win: won,
       largestMultiKill: i === 0 && seed(7) > 0.7 ? 4 : 1,
       firstBlood: i === (gameId % 10),
+      turretDamage: 1500 + ((i * 937) % 6000),
+      ccTime: 5 + ((i * 7) % 40),
+      mitigated: 8000 + ((i * 2311) % 20000),
+      wardsKilled: (i * 3) % 8,
       badges: i === 0 ? (win ? ["mvp", "topDamage"] : ["ace"]) : i === 4 ? ["vision"] : [],      augments: queueId === 2400 ? [1243, 1204, 1353, 1063].slice(0, 2 + (i % 3)) : [],
 
     };

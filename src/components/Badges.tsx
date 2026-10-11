@@ -47,6 +47,26 @@ const MATCH: Record<Badge, { label: string; tip: string; tone: Tone }> = {
     tip: "In on 70%+ of the team's kills",
     tone: "neutral",
   },
+  comeback: { label: "Comeback", tip: "Won after being 5k+ gold behind", tone: "good" },
+  wireToWire: { label: "Wire to wire", tip: "Your team led in gold the whole game", tone: "good" },
+  bigBrain: { label: "Big brain", tip: "Took Baron or a dragon while behind in gold", tone: "good" },
+  cleanLaning: { label: "Clean laning", tip: "No deaths before 14:00", tone: "neutral" },
+  demolisher: { label: "Demolisher", tip: "Most damage to towers", tone: "neutral" },
+  lockdown: { label: "Lockdown", tip: "Most time crowd-controlling enemies", tone: "neutral" },
+  ironWall: { label: "Iron wall", tip: "Most damage blocked", tone: "neutral" },
+  wardHunter: { label: "Ward hunter", tip: "Destroyed the most wards", tone: "neutral" },
+  bargainBin: { label: "Bargain bin", tip: "Most champion damage per gold earned", tone: "neutral" },
+  speedrun: { label: "Speedrun", tip: "Won in under 20 minutes", tone: "good" },
+  marathon: { label: "Marathon", tip: "Game went past 40 minutes", tone: "neutral" },
+  nightOwl: { label: "Night owl", tip: "Finished between 3 and 6 in the morning", tone: "neutral" },
+  grinder: { label: "Grinder", tip: "Your 10th+ game of the day", tone: "neutral" },
+  bounceBack: { label: "Bounce back", tip: "Won right after 3 losses in a row", tone: "good" },
+  pocketPick: { label: "Pocket pick", tip: "Won on a champion you'd never played before", tone: "good" },
+  heartbreaker: { label: "Heartbreaker", tip: "Lost after leading by 5k+ gold", tone: "bad" },
+  grayScreen: { label: "Gray screen enjoyer", tip: "Died 10+ times", tone: "bad" },
+  generous: { label: "Generous", tip: "Gave up first blood", tone: "bad" },
+  pacifist: { label: "Pacifist", tip: "No kills in a 20+ minute game", tone: "bad" },
+  wardrobeEmpty: { label: "Wardrobe empty", tip: "No wards placed in a 20+ minute game", tone: "bad" },
 };
 
 const PLAYER: Record<PlayerBadge, { label: string; tip: string; tone: Tone }> =
@@ -72,6 +92,9 @@ const PLAYER: Record<PlayerBadge, { label: string; tip: string; tone: Tone }> =
       tip: "400+ ranked games this season",
       tone: "neutral",
     },
+    coldStreak: { label: "Cold streak", tip: "Lost their last 3+ games", tone: "neutral" },
+    newToChamp: { label: "New to champ", tip: "Under 2k mastery points on this champion", tone: "neutral" },
+    fewRankedGames: { label: "Few ranked games", tip: "Under 10 ranked games this season", tone: "neutral" },
   };
 
 const TONE: Record<Tone, string> = {

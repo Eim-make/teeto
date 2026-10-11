@@ -15,6 +15,8 @@ use crate::matches::lcu::Game;
 const RANKED_QUEUES: [i64; 2] = [420, 440];
 const PROFILE_TTL: Duration = Duration::from_secs(10 * 60);
 const RECENT_SHOWN: usize = 10;
+const NEW_TO_CHAMP_MASTERY: i32 = 2000;
+const FEW_RANKED_GAMES: i32 = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +27,9 @@ pub enum PlayerBadge {
     Expert,
     HighWinRate,
     Veteran,
+    ColdStreak,
+    NewToChamp,
+    FewRankedGames,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -113,7 +118,7 @@ pub struct Profile {
     tag_line: String,
     level: i32,
     ranked: Option<RankedStats>,
-    mastery: HashMap<i32, (i32, i32)>,
+    mastery: Option<HashMap<i32, (i32, i32)>>,
     games: Vec<(RecentGame, &'static str)>,
 }
 
@@ -227,10 +232,8 @@ async fn load_profile(client: &LcuClient, profiles: &Profiles, puuid: &str) -> P
         level: summoner.summoner_level,
         ranked: ranked.ok(),
         mastery: mastery
-            .unwrap_or_default()
-            .into_iter()
-            .map(|m| (m.champion_id, (m.champion_level, m.champion_points)))
-            .collect(),
+            .ok()
+            .map(|list| list.into_iter().map(|m| (m.champion_id, (m.champion_level, m.champion_points))).collect()),
         games: games.into_iter().map(|(_, g, l)| (g, l)).collect(),
     };
     profiles.put(puuid, &profile);
@@ -315,7 +318,7 @@ pub fn roles(games: &[(RecentGame, &'static str)]) -> Vec<RoleCount> {
 pub struct BadgeInput<'a> {
     pub form: &'a Form,
     pub rank: Option<&'a Standing>,
-    pub mastery_points: i32,
+    pub mastery_points: Option<i32>,
 }
 
 pub fn player_badges(i: &BadgeInput) -> Vec<PlayerBadge> {
@@ -323,8 +326,12 @@ pub fn player_badges(i: &BadgeInput) -> Vec<PlayerBadge> {
     let mut b = Vec::new();
     if f.streak >= 3 {
         b.push(PlayerBadge::HotStreak);
+    } else if f.streak <= -3 {
+        b.push(PlayerBadge::ColdStreak);
     }
-    if i.mastery_points >= 100_000 {
+    if i.mastery_points.is_some_and(|m| m < NEW_TO_CHAMP_MASTERY) && f.champion_games == 0 {
+        b.push(PlayerBadge::NewToChamp);
+    } else if i.mastery_points.unwrap_or_default() >= 100_000 {
         b.push(PlayerBadge::Expert);
     } else if f.games >= 8 && f.main_champion_share >= 0.6 {
         b.push(PlayerBadge::Main);
@@ -336,6 +343,8 @@ pub fn player_badges(i: &BadgeInput) -> Vec<PlayerBadge> {
         }
         if games >= 400 {
             b.push(PlayerBadge::Veteran);
+        } else if games < FEW_RANKED_GAMES {
+            b.push(PlayerBadge::FewRankedGames);
         }
     }
     b
@@ -359,9 +368,10 @@ pub async fn scout_player(client: &LcuClient, profiles: &Profiles, seat: &Seat<'
     let solo = p.ranked.as_ref().and_then(|r| r.queue_map.get(Queue::Solo.key()));
     let rank = p.ranked.as_ref().and_then(|r| r.standing(rank_queue)).filter(|s| s.absolute().is_some());
     let f = form(&p.games, seat.champion_id);
-    let (mastery_level, mastery_points) = p.mastery.get(&seat.champion_id).copied().unwrap_or_default();
+    let known = p.mastery.as_ref().map(|m| m.get(&seat.champion_id).copied().unwrap_or_default());
+    let (mastery_level, mastery_points) = known.unwrap_or_default();
     let position = if RANKED_QUEUES.contains(&queue_id) { seat.position.to_ascii_uppercase() } else { String::new() };
-    let badges = player_badges(&BadgeInput { form: &f, rank: rank.as_ref(), mastery_points });
+    let badges = player_badges(&BadgeInput { form: &f, rank: rank.as_ref(), mastery_points: known.map(|k| k.1) });
 
     LivePlayer {
         puuid: seat.puuid.to_owned(),
@@ -571,14 +581,19 @@ mod tests {
         let games: Vec<_> = (0..10).map(|i| g(17, i < 4, 1, 1, 1, "TOP")).collect();
         let rank = Standing { tier: "GOLD".into(), division: "I".into(), lp: 50, wins: 70, losses: 30 };
         let f = form(&games, 17);
-        let b = player_badges(&BadgeInput { form: &f, rank: Some(&rank), mastery_points: 5000 });
+        let b = player_badges(&BadgeInput { form: &f, rank: Some(&rank), mastery_points: Some(5000) });
         assert_eq!(b, vec![PlayerBadge::HotStreak, PlayerBadge::Main, PlayerBadge::HighWinRate]);
         let losing: Vec<_> = (0..10).map(|_| g(99, false, 0, 5, 0, "TOP")).collect();
         let low = Standing { tier: "IRON".into(), division: "IV".into(), lp: 0, wins: 10, losses: 40 };
         let f = form(&losing, 17);
-        assert!(player_badges(&BadgeInput { form: &f, rank: Some(&low), mastery_points: 0 }).is_empty());
-        let b = player_badges(&BadgeInput { form: &f, rank: None, mastery_points: 250_000 });
-        assert_eq!(b, vec![PlayerBadge::Expert]);
+        let b = player_badges(&BadgeInput { form: &f, rank: Some(&low), mastery_points: Some(0) });
+        assert_eq!(b, vec![PlayerBadge::ColdStreak, PlayerBadge::NewToChamp]);
+        assert!(!player_badges(&BadgeInput { form: &f, rank: Some(&low), mastery_points: None }).contains(&PlayerBadge::NewToChamp));
+        let b = player_badges(&BadgeInput { form: &f, rank: None, mastery_points: Some(250_000) });
+        assert_eq!(b, vec![PlayerBadge::ColdStreak, PlayerBadge::Expert]);
+        let fresh = Standing { tier: "SILVER".into(), division: "II".into(), lp: 10, wins: 4, losses: 2 };
+        let b = player_badges(&BadgeInput { form: &f, rank: Some(&fresh), mastery_points: Some(50_000) });
+        assert_eq!(b, vec![PlayerBadge::ColdStreak, PlayerBadge::FewRankedGames]);
     }
 
     #[test]

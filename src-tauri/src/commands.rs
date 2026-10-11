@@ -103,6 +103,7 @@ pub fn matches(
     filter: MatchFilter,
     before: Option<i64>,
     limit: u32,
+    utc_offset_min: Option<i32>,
 ) -> Result<Vec<MatchSummary>> {
     let Some(puuid) = state.puuid() else { return Ok(Vec::new()) };
     let queues = match filter {
@@ -110,16 +111,27 @@ pub fn matches(
         MatchFilter::All => None,
     };
     let mut details = state.store.matches(&puuid, queues, before.unwrap_or(i64::MAX), limit.clamp(1, 100))?;
-    details.iter_mut().for_each(badges::annotate);
+    let history = state.store.history(&puuid)?;
+    for d in &mut details {
+        badges::annotate(d);
+        badges::annotate_self(d, &puuid, &history, utc_offset_min.unwrap_or_default());
+    }
     let ids: Vec<i64> = details.iter().map(|d| d.game_id).collect();
     let deltas = state.store.deltas_for_games(&puuid, &ids)?;
     Ok(details.iter().filter_map(|d| summarize(d, &puuid, deltas.get(&d.game_id).copied())).collect())
 }
 
 #[tauri::command]
-pub async fn match_detail(state: State<'_, AppState>, game_id: i64) -> Result<MatchDetail> {
+pub async fn match_detail(state: State<'_, AppState>, game_id: i64, utc_offset_min: Option<i32>) -> Result<MatchDetail> {
+    let mark = |detail: &mut MatchDetail| -> Result<()> {
+        badges::annotate(detail);
+        if let Some(puuid) = state.puuid() {
+            badges::annotate_self(detail, &puuid, &state.store.history(&puuid)?, utc_offset_min.unwrap_or_default());
+        }
+        Ok(())
+    };
     if let Some(mut detail) = state.store.match_detail(game_id)? {
-        badges::annotate(&mut detail);
+        mark(&mut detail)?;
         return Ok(detail);
     }
     let client = state.shared.client().ok_or(Error::NotConnected)?;
@@ -129,7 +141,7 @@ pub async fn match_detail(state: State<'_, AppState>, game_id: i64) -> Result<Ma
             state.store.save_match(&puuid, &detail, "client")?;
         }
     }
-    badges::annotate(&mut detail);
+    mark(&mut detail)?;
     Ok(detail)
 }
 

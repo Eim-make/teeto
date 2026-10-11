@@ -70,6 +70,14 @@ pub struct PlayerDetail {
     #[serde(default)]
     pub first_blood: bool,
     #[serde(default)]
+    pub turret_damage: i32,
+    #[serde(default)]
+    pub cc_time: i32,
+    #[serde(default)]
+    pub mitigated: i32,
+    #[serde(default)]
+    pub wards_killed: i32,
+    #[serde(default)]
     pub badges: Vec<crate::badges::Badge>,
     #[serde(default)]
     pub augments: Vec<i32>,
@@ -340,6 +348,10 @@ pub mod lcu {
                     win: stat(s, "win") == 1,
                     largest_multi_kill: stat(s, "largestMultiKill"),
                     first_blood: stat(s, "firstBloodKill") == 1,
+                    turret_damage: stat(s, "damageDealtToTurrets"),
+                    cc_time: stat(s, "timeCCingOthers"),
+                    mitigated: stat(s, "damageSelfMitigated"),
+                    wards_killed: stat(s, "wardsKilled"),
                     badges: Vec::new(),
                     augments: (1..=6).map(|i| stat(s, &format!("playerAugment{i}"))).filter(|a| *a > 0).collect(),
                 }

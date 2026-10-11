@@ -312,6 +312,27 @@ impl Store {
         Ok(out)
     }
 
+    pub fn history(&self, puuid: &str) -> Result<Vec<crate::badges::Played>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT m.game_id, m.created_at, json_extract(m.detail, '$.durationSec'),
+                    json_extract(p.value, '$.championId'), json_extract(p.value, '$.win')
+             FROM matches m, json_each(m.detail, '$.players') p
+             WHERE m.puuid = ?1 AND json_extract(p.value, '$.puuid') = ?1
+             ORDER BY m.created_at",
+        )?;
+        let rows = stmt.query_map([puuid], |r| {
+            Ok(crate::badges::Played {
+                game_id: r.get(0)?,
+                created_at: r.get(1)?,
+                duration_sec: r.get::<_, Option<i64>>(2)?.unwrap_or_default(),
+                champion_id: r.get::<_, Option<i32>>(3)?.unwrap_or_default(),
+                win: r.get::<_, Option<bool>>(4)?.unwrap_or_default(),
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
     pub fn has_game(&self, game_id: i64) -> Result<bool> {
         Ok(self
             .conn()
@@ -455,6 +476,26 @@ mod tests {
         let page: Vec<_> = store.matches("p", None, 30, 1).unwrap().iter().map(|m| m.game_id).collect();
         assert_eq!(page, vec![2]);
         assert_eq!(store.match_detail(2).unwrap().unwrap().queue_id, 2400);
+    }
+
+    #[test]
+    fn lists_my_history_oldest_first() {
+        let store = Store::in_memory().unwrap();
+        let insert = |owner: &str, id: i64, at: i64, detail: &str| {
+            store
+                .conn()
+                .execute(
+                    "INSERT INTO matches (puuid, game_id, queue_id, created_at, source, detail) VALUES (?1, ?2, 420, ?3, 'client', ?4)",
+                    params![owner, id, at, detail],
+                )
+                .unwrap();
+        };
+        insert("me", 2, 20, r#"{"durationSec": 900, "players": [{"puuid": "x", "championId": 1, "win": true}, {"puuid": "me", "championId": 17, "win": false}]}"#);
+        insert("me", 1, 10, r#"{"durationSec": 1800, "players": [{"puuid": "me", "championId": 86, "win": true}]}"#);
+        insert("other", 3, 30, r#"{"durationSec": 1800, "players": [{"puuid": "other", "championId": 5, "win": true}]}"#);
+        let h = store.history("me").unwrap();
+        let rows: Vec<_> = h.iter().map(|p| (p.game_id, p.created_at, p.duration_sec, p.champion_id, p.win)).collect();
+        assert_eq!(rows, vec![(1, 10, 1800, 86, true), (2, 20, 900, 17, false)]);
     }
 
     #[test]
