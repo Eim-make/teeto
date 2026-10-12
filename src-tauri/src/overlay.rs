@@ -67,14 +67,33 @@ fn icon_url(path: &str) -> String {
     format!("{CDRAGON_ASSETS}{rest}")
 }
 
+const MAYHEM_MIN_ID: i32 = 1000;
+
+fn mayhem_pool(list: &[RawAugment]) -> Vec<(&RawAugment, i32)> {
+    let mayhem: Vec<&RawAugment> = list.iter().filter(|a| a.id >= MAYHEM_MIN_ID).collect();
+    mayhem
+        .iter()
+        .map(|a| {
+            let canonical = mayhem
+                .iter()
+                .filter(|b| !a.name.is_empty() && b.name == a.name)
+                .min_by_key(|b| (!b.augment_name_id.starts_with("ARAM_"), b.id))
+                .map_or(a.id, |b| b.id);
+            (*a, canonical)
+        })
+        .collect()
+}
+
 async fn load_library(dir: PathBuf) -> Result<Catalog> {
     std::fs::create_dir_all(&dir)?;
     let http = reqwest::Client::builder().timeout(Duration::from_secs(20)).build()?;
     let list: Vec<RawAugment> = http.get(AUGMENTS_JSON).send().await?.json().await?;
     let mut icons = Vec::new();
     let mut meta = HashMap::new();
-    for a in list.iter().filter(|a| a.augment_name_id.starts_with("ARAM_")) {
-        meta.insert(a.id, Meta { name: a.name.clone(), rarity: a.rarity.clone() });
+    for (a, id) in mayhem_pool(&list) {
+        if id == a.id {
+            meta.insert(id, Meta { name: a.name.clone(), rarity: a.rarity.clone() });
+        }
         let file = dir.join(format!("{}.png", a.id));
         let bytes = match std::fs::read(&file) {
             Ok(b) => b,
@@ -86,7 +105,7 @@ async fn load_library(dir: PathBuf) -> Result<Catalog> {
             }
         };
         if let Ok(img) = image::load_from_memory(&bytes) {
-            icons.push((a.id, img.to_rgba8()));
+            icons.push((id, img.to_rgba8()));
         }
     }
     Ok(Catalog { library: Library::new(icons), meta })
@@ -508,7 +527,7 @@ fn show(app: &AppHandle, rect: Rect, scan: &AugmentScan) -> Result<()> {
     window.set_position(PhysicalPosition::new(rect.x, rect.y))?;
     window.set_size(PhysicalSize::new(rect.width, rect.height))?;
     window.set_ignore_cursor_events(true)?;
-    window.set_content_protected(true)?;
+    window.set_content_protected(std::env::var_os("TEETO_CAPTURE").is_none())?;
     window.show()?;
     app.emit_to("overlay", "augment-scan", scan)?;
     Ok(())
@@ -557,5 +576,28 @@ mod tests {
         assert_eq!(s.observe(&[9, 2, 3]), [false, true, true]);
         assert_eq!(s.observe(&[8, 2, 3]), [false, true, true]);
         assert_eq!(s.observe(&[8, 2, 3]), [true, true, true]);
+    }
+
+    fn raw(id: i32, name_id: &str, name: &str) -> RawAugment {
+        RawAugment {
+            id,
+            augment_name_id: name_id.into(),
+            augment_small_icon_path: String::new(),
+            name: name.into(),
+            rarity: String::new(),
+        }
+    }
+
+    #[test]
+    fn pools_every_mayhem_augment_and_merges_duplicates() {
+        let list = [
+            raw(75, "SlowCooker", "Slow Cooker"),
+            raw(1075, "ARAM_SlowCooker", "Slow Cooker"),
+            raw(2102, "PressureCooker", "Pressure Cooker"),
+            raw(1046, "ARAM_HextechSoul", "Hextech Soul"),
+            raw(1416, "HextechSoul", "Hextech Soul"),
+        ];
+        let pool: Vec<(i32, i32)> = mayhem_pool(&list).into_iter().map(|(a, id)| (a.id, id)).collect();
+        assert_eq!(pool, [(1075, 1075), (2102, 2102), (1046, 1046), (1416, 1046)]);
     }
 }

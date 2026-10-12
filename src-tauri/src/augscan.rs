@@ -146,7 +146,10 @@ impl Library {
                 let d = integral.descriptor(*slot, FINE);
                 let scored: Vec<(i32, f32)> = self.templates.iter().map(|t| (t.id, dot(&d, &t.fine))).collect();
                 let (id, score) = scored.iter().copied().max_by(|a, b| a.1.total_cmp(&b.1)).unwrap_or((0, -1.0));
-                let alternatives = scored.iter().filter(|(_, s)| *s >= score - TIE).map(|(i, _)| *i).collect();
+                let mut alternatives: Vec<i32> =
+                    scored.iter().filter(|(_, s)| *s >= score - TIE).map(|(i, _)| *i).collect();
+                alternatives.sort_unstable();
+                alternatives.dedup();
                 Found { id, slot: *slot, score, alternatives }
             })
             .collect()
