@@ -126,13 +126,13 @@ function Overlay() {
           {scan.message}
         </div>
       )}
-      {scan.cards.map((card, i) => {
+      {scan.cards.map((card) => {
         const size = card.size / ratio;
         const left = card.x / ratio + size / 2;
         const top = card.y / ratio - size * CARD_TOP - GAP;
         return (
           <div
-            key={i}
+            key={card.x}
             className="absolute -translate-x-1/2 -translate-y-full"
             style={{ left, top }}
           >

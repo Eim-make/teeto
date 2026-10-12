@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use image::RgbaImage;
 use serde::{Deserialize, Serialize};
@@ -171,9 +171,16 @@ async fn my_champion(app: &AppHandle) -> i32 {
     session.game_data.player_champion_selections.into_iter().find(|p| p.puuid == puuid).map_or(0, |p| p.champion_id)
 }
 
-const WATCH_INTERVAL: Duration = Duration::from_millis(1000);
-const FULL_SEARCH_EVERY: u32 = 3;
+const HOT_INTERVAL: Duration = Duration::from_millis(250);
+const COLD_INTERVAL: Duration = Duration::from_millis(1500);
+const IDLE_INTERVAL: Duration = Duration::from_millis(1000);
+const HOT_FULL_SEARCH: Duration = Duration::from_secs(2);
+const COLD_FULL_SEARCH: Duration = Duration::from_secs(6);
+const LEVEL_CHECK: Duration = Duration::from_secs(1);
 const MISSES_BEFORE_HIDE: u32 = 3;
+const PICK_LEVELS: [i32; 3] = [7, 11, 15];
+const HOT_AFTER_HIDE: Duration = Duration::from_secs(5);
+const SETTLE_READS: u8 = 2;
 const MAYHEM_MODE: &str = "KIWI";
 
 async fn library(app: &AppHandle) -> Result<Arc<Catalog>> {
@@ -272,14 +279,18 @@ async fn detect(app: &AppHandle, allow_full: bool) -> Result<Option<Detection>> 
                 let quick = catalog.library.identify(&shot, &absolute(&layout, w, h));
                 let matched = quick.iter().filter(|f| f.score >= MATCH_THRESHOLD).count();
                 partly_visible = matched >= 2;
-                if matched == quick.len() {
+                if partly_visible {
                     found = quick;
                 }
             }
-            if found.is_empty() && allow_full {
+            let complete = |f: &[Found]| f.len() == 3 && f.iter().all(|f| f.score >= MATCH_THRESHOLD);
+            if !complete(&found) && allow_full {
                 let row = catalog.library.search(&shot);
                 if row.len() == 3 {
-                    found = catalog.library.identify(&shot, &row.iter().map(|f| f.slot).collect::<Vec<_>>());
+                    let full = catalog.library.identify(&shot, &row.iter().map(|f| f.slot).collect::<Vec<_>>());
+                    if found.is_empty() || complete(&full) {
+                        found = full;
+                    }
                 }
             }
             if found.len() == 3 {
@@ -295,7 +306,7 @@ async fn detect(app: &AppHandle, allow_full: bool) -> Result<Option<Detection>> 
     })
     .await
     .map_err(|e| Error::Server(e.to_string()))?;
-    if found.len() == 3 {
+    if found.len() == 3 && found.iter().all(|f| f.score >= MATCH_THRESHOLD) {
         remember_layout(app, relative(&found.iter().map(|f| f.slot).collect::<Vec<_>>(), w, h));
     }
     Ok(Some(Detection { rect, found, shot, partly_visible }))
@@ -315,7 +326,8 @@ fn to_scan(found: &[Found], champion_id: i32, message: Option<String>) -> Augmen
 pub async fn scan(app: &AppHandle) -> Result<AugmentScan> {
     let Detection { rect, found, shot, .. } =
         detect(app, true).await?.ok_or_else(|| Error::Server("the League game window isn't open".into()))?;
-    let message = (found.len() < 3).then(|| "Couldn't spot the augment cards. Try again while they're on screen.".into());
+    let found: Vec<Found> = found.into_iter().filter(|f| f.score >= MATCH_THRESHOLD).collect();
+    let message = found.is_empty().then(|| "Couldn't spot the augment cards. Try again while they're on screen.".into());
     let scan = to_scan(&found, my_champion(app).await, message);
     if let Ok(cache) = app.path().app_cache_dir() {
         save_debug(&cache.join("scans"), &shot, &scan);
@@ -324,15 +336,86 @@ pub async fn scan(app: &AppHandle) -> Result<AugmentScan> {
     Ok(scan)
 }
 
+#[derive(Debug, Default)]
+struct Pacing {
+    level: i32,
+    picks_seen: usize,
+    hidden_at: Option<Instant>,
+}
+
+impl Pacing {
+    fn unlocked(&self) -> usize {
+        1 + PICK_LEVELS.iter().filter(|&&l| self.level >= l).count()
+    }
+
+    fn hot(&self, showing: bool) -> bool {
+        showing
+            || self.picks_seen < self.unlocked()
+            || self.hidden_at.is_some_and(|t| t.elapsed() < HOT_AFTER_HIDE)
+    }
+
+    fn closed(&mut self) {
+        self.picks_seen = (self.picks_seen + 1).min(self.unlocked());
+        self.hidden_at = Some(Instant::now());
+    }
+
+    fn interval(&self, showing: bool) -> Duration {
+        if self.hot(showing) { HOT_INTERVAL } else { COLD_INTERVAL }
+    }
+
+    fn full_search_every(&self, showing: bool) -> Duration {
+        if self.hot(showing) { HOT_FULL_SEARCH } else { COLD_FULL_SEARCH }
+    }
+}
+
+#[derive(Debug, Default)]
+struct Settle {
+    ids: Vec<i32>,
+    streak: Vec<u8>,
+}
+
+impl Settle {
+    fn observe(&mut self, ids: &[i32]) -> Vec<bool> {
+        if self.ids.len() != ids.len() {
+            self.ids = ids.to_vec();
+            self.streak = vec![0; ids.len()];
+        }
+        for (i, &id) in ids.iter().enumerate() {
+            if self.ids[i] == id {
+                self.streak[i] = self.streak[i].saturating_add(1);
+            } else {
+                self.ids[i] = id;
+                self.streak[i] = 1;
+            }
+        }
+        self.streak.iter().map(|&n| n >= SETTLE_READS).collect()
+    }
+}
+
+fn my_level(game: &crate::ingame::InGame) -> Option<i32> {
+    let me = game.me.to_lowercase();
+    let name = me.split('#').next().unwrap_or_default();
+    game.players
+        .iter()
+        .find(|p| p.riot_id.to_lowercase() == me)
+        .or_else(|| game.players.iter().find(|p| p.riot_id.to_lowercase().split('#').next() == Some(name)))
+        .map(|p| p.level)
+}
+
 pub async fn watch(app: AppHandle) {
-    let mut tick: u32 = 0;
     let mut shown: Vec<i32> = Vec::new();
     let mut champion = 0;
     let mut mayhem: Option<bool> = None;
     let mut misses: u32 = 0;
+    let mut pacing = Pacing::default();
+    let mut settle = Settle::default();
+    let mut started = Instant::now();
+    let mut last_full: Option<Instant> = None;
+    let mut last_level: Option<Instant> = None;
     loop {
-        tokio::time::sleep(WATCH_INTERVAL).await;
-        tick = tick.wrapping_add(1);
+        let interval = if mayhem == Some(true) { pacing.interval(!shown.is_empty()) } else { IDLE_INTERVAL };
+        tokio::time::sleep(interval.saturating_sub(started.elapsed())).await;
+        started = Instant::now();
         let in_game = matches!(
             app.state::<AppState>().status(),
             crate::tracker::ClientStatus::Connected { ref phase, .. } if phase == "InProgress"
@@ -344,30 +427,48 @@ pub async fn watch(app: AppHandle) {
             }
             champion = 0;
             mayhem = None;
+            pacing = Pacing::default();
+            settle = Settle::default();
+            last_full = None;
+            last_level = None;
             continue;
         }
-        if mayhem.is_none() {
-            mayhem = crate::ingame::read().await.map(|g| g.mode == MAYHEM_MODE);
+        if mayhem.is_none() || last_level.is_none_or(|t| t.elapsed() >= LEVEL_CHECK) {
+            if let Some(game) = crate::ingame::read().await {
+                mayhem = Some(game.mode == MAYHEM_MODE);
+                pacing.level = my_level(&game).unwrap_or(pacing.level);
+                last_level = Some(Instant::now());
+            }
         }
         if mayhem != Some(true) {
             continue;
         }
-        let allow_full = shown.is_empty() && tick.is_multiple_of(FULL_SEARCH_EVERY);
+        if champion == 0 {
+            champion = my_champion(&app).await;
+        }
+        let full_every = if stored_layout(&app).is_some() { COLD_FULL_SEARCH } else { pacing.full_search_every(false) };
+        let allow_full = shown.is_empty() && last_full.is_none_or(|t| t.elapsed() >= full_every);
+        if allow_full {
+            last_full = Some(Instant::now());
+        }
         let Ok(Some(Detection { rect, found, shot, partly_visible })) = detect(&app, allow_full).await else { continue };
-        let ids: Vec<i32> = found.iter().map(|f| f.id).collect();
         if found.len() == 3 || partly_visible {
             misses = 0;
         }
-        if found.len() == 3 && ids != shown {
-            if champion == 0 {
-                champion = my_champion(&app).await;
-            }
-            let scan = to_scan(&found, champion, None);
-            if let Ok(cache) = app.path().app_cache_dir() {
-                save_debug(&cache.join("scans"), &shot, &scan);
-            }
-            if show(&app, rect, &scan).is_ok() {
-                shown = ids;
+        if found.len() == 3 {
+            let reads: Vec<i32> = found.iter().map(|f| if f.score >= MATCH_THRESHOLD { f.id } else { 0 }).collect();
+            let settled = settle.observe(&reads);
+            let stable: Vec<Found> =
+                found.iter().zip(&reads).zip(&settled).filter(|((_, &id), &ok)| ok && id != 0).map(|((f, _), _)| f.clone()).collect();
+            let ids: Vec<i32> = stable.iter().map(|f| f.id).collect();
+            if !stable.is_empty() && ids != shown {
+                let scan = to_scan(&stable, champion, None);
+                if show(&app, rect, &scan).is_ok() {
+                    shown = ids;
+                }
+                if let Ok(cache) = app.path().app_cache_dir() {
+                    tauri::async_runtime::spawn_blocking(move || save_debug(&cache.join("scans"), &shot, &scan));
+                }
             }
         } else if found.len() < 3 && !partly_visible && !shown.is_empty() {
             misses += 1;
@@ -375,6 +476,8 @@ pub async fn watch(app: AppHandle) {
                 hide(&app);
                 shown.clear();
                 misses = 0;
+                pacing.closed();
+                settle = Settle::default();
             }
         }
     }
@@ -425,5 +528,34 @@ mod tests {
         let out = normalize_layout(&raw);
         assert!(out.iter().all(|s| (s.size - 0.1677).abs() < 1e-4 && (s.y - 0.2042).abs() < 1e-4));
         assert!((out[0].x - (0.272 - (0.1677 - 0.1429) / 2.0)).abs() < 1e-4);
+    }
+
+    #[test]
+    fn stays_hot_until_each_unlocked_pick_is_seen() {
+        let mut p = Pacing { level: 1, ..Pacing::default() };
+        assert!(p.hot(false));
+        p.closed();
+        assert!(p.hot(false));
+        p.hidden_at = Instant::now().checked_sub(HOT_AFTER_HIDE);
+        assert!(!p.hot(false));
+        assert!(p.hot(true));
+        p.level = 7;
+        assert!(p.hot(false));
+        p.closed();
+        p.closed();
+        assert_eq!(p.picks_seen, 2);
+        p.level = 18;
+        assert_eq!(p.unlocked(), 4);
+        assert!(p.hot(false));
+    }
+
+    #[test]
+    fn only_settles_a_card_after_repeated_reads() {
+        let mut s = Settle::default();
+        assert_eq!(s.observe(&[1, 2, 3]), [false, false, false]);
+        assert_eq!(s.observe(&[1, 2, 3]), [true, true, true]);
+        assert_eq!(s.observe(&[9, 2, 3]), [false, true, true]);
+        assert_eq!(s.observe(&[8, 2, 3]), [false, true, true]);
+        assert_eq!(s.observe(&[8, 2, 3]), [true, true, true]);
     }
 }

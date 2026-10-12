@@ -9,7 +9,6 @@ import { createRoot } from "react-dom/client";
 import "@fontsource-variable/inter";
 import "./styles/index.css";
 import type { InGame } from "./lib/bindings/InGame";
-import type { WidgetConfig } from "./lib/bindings/WidgetConfig";
 import { api } from "./lib/ipc";
 import { demo } from "./lib/demo";
 import {
@@ -18,9 +17,8 @@ import {
   useWidgetEditing,
   useWidgetSettings,
   widgetApi,
-  WIDGET_INFO,
 } from "./lib/widgets";
-import { WidgetView } from "./features/widgets/WidgetViews";
+import { StatsBar } from "./features/widgets/WidgetViews";
 
 const POLL = 1000;
 
@@ -43,58 +41,10 @@ function useLiveGame(): InGame | null {
   return game;
 }
 
-type Drag = {
-  kind: WidgetConfig["kind"];
-  dx: number;
-  dy: number;
-  w: number;
-  h: number;
-};
+type Drag = { dx: number; dy: number; w: number; h: number };
 
-const clamp = (v: number, max: number) =>
-  Math.min(Math.max(v, 0), Math.max(max, 0));
-
-function Toolbar({
-  widget,
-  below,
-  onChange,
-}: {
-  widget: WidgetConfig;
-  below: boolean;
-  onChange: (patch: Partial<WidgetConfig>) => void;
-}) {
-  return (
-    <div
-      onPointerDown={(e) => e.stopPropagation()}
-      className={`absolute left-0 flex items-center gap-2 rounded-md border border-line-strong bg-ink-900 px-2 py-1 text-[11px] whitespace-nowrap text-soft ${
-        below ? "top-full mt-1" : "bottom-full mb-1"
-      }`}
-    >
-      <span className="font-medium">{WIDGET_INFO[widget.kind].name}</span>
-      <input
-        type="range"
-        min={20}
-        max={100}
-        value={Math.round(widget.opacity * 100)}
-        onChange={(e) => onChange({ opacity: Number(e.target.value) / 100 })}
-        title="Opacity"
-        className="w-20 accent-crimson"
-      />
-      <button
-        onClick={() => onChange({ locked: !widget.locked })}
-        className={`cursor-pointer ${widget.locked ? "text-crimson-bright" : "text-muted hover:text-fg"}`}
-      >
-        {widget.locked ? "Locked" : "Lock"}
-      </button>
-      <button
-        onClick={() => onChange({ visible: !widget.visible })}
-        className="cursor-pointer text-muted hover:text-fg"
-      >
-        {widget.visible ? "Hide" : "Show"}
-      </button>
-    </div>
-  );
-}
+const clamp = (v: number, min: number, max: number) =>
+  Math.min(Math.max(v, min), Math.max(max, min));
 
 function Widgets() {
   const { settings, save, update, setLocal } = useWidgetSettings();
@@ -114,32 +64,30 @@ function Widgets() {
   if (!settings || !game) return null;
   if (!settings.enabled && !editing) return null;
 
+  const segments = settings.segments
+    .filter((s) => s.visible)
+    .map((s) => s.kind);
+
   const move = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     if (!d) return;
     if (e.buttons === 0) return end();
+    const W = window.innerWidth;
+    const H = window.innerHeight;
     const x = clamp(
-      (e.clientX - d.dx) / window.innerWidth,
-      1 - d.w / window.innerWidth,
+      (e.clientX - d.dx + d.w / 2) / W,
+      d.w / 2 / W,
+      1 - d.w / 2 / W,
     );
-    const y = clamp(
-      (e.clientY - d.dy) / window.innerHeight,
-      1 - d.h / window.innerHeight,
-    );
+    const y = clamp((e.clientY - d.dy) / H, 0, 1 - d.h / H);
     unsaved.current = true;
-    setLocal({
-      ...settings,
-      widgets: settings.widgets.map((w) =>
-        w.kind === d.kind ? { ...w, x, y } : w,
-      ),
-    });
+    setLocal({ ...settings, x, y });
   };
 
-  const start = (e: PointerEvent<HTMLDivElement>, widget: WidgetConfig) => {
-    if (!editing || widget.locked) return;
+  const start = (e: PointerEvent<HTMLDivElement>) => {
+    if (!editing || settings.locked) return;
     const rect = e.currentTarget.getBoundingClientRect();
     drag.current = {
-      kind: widget.kind,
       dx: e.clientX - rect.left,
       dy: e.clientY - rect.top,
       w: rect.width,
@@ -160,17 +108,39 @@ function Widgets() {
       className={`fixed inset-0 ${editing ? "bg-black/35" : "pointer-events-none"}`}
     >
       {editing && (
-        <div className="absolute top-[38%] left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-line-strong bg-ink-900 px-3 py-2 text-[12px] text-soft shadow-lg">
+        <div className="absolute top-[38%] left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-line-strong bg-ink-900 px-3 py-2 text-[12px] whitespace-nowrap text-soft shadow-lg">
           <span className="h-2 w-2 rounded-full bg-crimson" />
           <span>
-            Drag widgets to move them. {!live && "Showing sample data. "}
+            Drag the bar to move it. {!live && "Showing sample data. "}
             <span className="text-muted">{EDIT_SHORTCUT} to finish.</span>
           </span>
+          <label className="tabular flex items-center gap-2 text-muted">
+            <input
+              type="range"
+              min={20}
+              max={100}
+              value={Math.round(settings.opacity * 100)}
+              onChange={(e) =>
+                update({ opacity: Number(e.target.value) / 100 })
+              }
+              className="w-20 accent-crimson"
+              aria-label="Bar opacity"
+            />
+            <span className="w-8 text-right">
+              {Math.round(settings.opacity * 100)}%
+            </span>
+          </label>
+          <button
+            onClick={() => update({ locked: !settings.locked })}
+            className={`cursor-pointer ${settings.locked ? "text-crimson-bright" : "text-muted hover:text-fg"}`}
+          >
+            {settings.locked ? "Locked" : "Lock"}
+          </button>
           <button
             onClick={() => save(resetLayout(settings))}
             className="cursor-pointer text-muted hover:text-fg"
           >
-            Reset layout
+            Reset
           </button>
           <button
             onClick={() => void widgetApi.setEditing(false)}
@@ -180,36 +150,27 @@ function Widgets() {
           </button>
         </div>
       )}
-      {settings.widgets.map((widget) => {
-        if (!widget.visible && !editing) return null;
-        return (
-          <div
-            key={widget.kind}
-            onPointerDown={(e) => start(e, widget)}
-            onPointerMove={move}
-            onPointerUp={end}
-            onPointerCancel={end}
-            onLostPointerCapture={end}
-            className={`absolute ${
-              editing
-                ? `rounded-lg outline-1 outline-offset-2 ${widget.locked ? "outline-line-strong" : "cursor-move outline-dashed outline-crimson/70"}`
-                : ""
-            }`}
-            style={{ left: `${widget.x * 100}%`, top: `${widget.y * 100}%` }}
-          >
-            {editing && (
-              <Toolbar
-                widget={widget}
-                below={widget.y < 0.08}
-                onChange={(patch) => update(widget.kind, patch)}
-              />
-            )}
-            <div style={{ opacity: widget.visible ? widget.opacity : 0.25 }}>
-              <WidgetView kind={widget.kind} game={game} editing={editing} />
-            </div>
-          </div>
-        );
-      })}
+      {segments.length > 0 && (
+        <div
+          onPointerDown={start}
+          onPointerMove={move}
+          onPointerUp={end}
+          onPointerCancel={end}
+          onLostPointerCapture={end}
+          className={`absolute -translate-x-1/2 ${
+            editing
+              ? `rounded-lg outline-1 outline-offset-2 ${settings.locked ? "outline-line-strong" : "cursor-move outline-dashed outline-crimson/70"}`
+              : ""
+          }`}
+          style={{
+            left: `${settings.x * 100}%`,
+            top: `${settings.y * 100}%`,
+            opacity: settings.opacity,
+          }}
+        >
+          <StatsBar segments={segments} game={game} editing={editing} />
+        </div>
+      )}
     </div>
   );
 }

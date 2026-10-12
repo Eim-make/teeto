@@ -18,63 +18,73 @@ const WATCH_INTERVAL: Duration = Duration::from_millis(1000);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
-pub enum WidgetKind {
-    GoldLead,
-    CoreItems,
-    Objectives,
+pub enum SegmentKind {
+    Champion,
+    Kda,
     Farm,
+    GoldLead,
+    Objectives,
+    CoreItems,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
-pub struct WidgetConfig {
-    pub kind: WidgetKind,
+pub struct Segment {
+    pub kind: SegmentKind,
     pub visible: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export)]
+pub struct WidgetSettings {
+    pub enabled: bool,
     pub locked: bool,
     pub opacity: f32,
     pub x: f32,
     pub y: f32,
+    pub segments: Vec<Segment>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export)]
-pub struct WidgetSettings {
-    pub enabled: bool,
-    pub widgets: Vec<WidgetConfig>,
-}
-
-fn widget(kind: WidgetKind, x: f32, y: f32) -> WidgetConfig {
-    WidgetConfig { kind, visible: true, locked: false, opacity: 0.9, x, y }
-}
+const ALL_SEGMENTS: [SegmentKind; 6] = [
+    SegmentKind::Champion,
+    SegmentKind::Kda,
+    SegmentKind::Farm,
+    SegmentKind::GoldLead,
+    SegmentKind::Objectives,
+    SegmentKind::CoreItems,
+];
 
 impl Default for WidgetSettings {
     fn default() -> Self {
         WidgetSettings {
             enabled: true,
-            widgets: vec![
-                widget(WidgetKind::GoldLead, 0.44, 0.01),
-                widget(WidgetKind::Objectives, 0.83, 0.07),
-                widget(WidgetKind::CoreItems, 0.005, 0.3),
-                widget(WidgetKind::Farm, 0.005, 0.22),
-            ],
+            locked: false,
+            opacity: 0.9,
+            x: 0.5,
+            y: 0.01,
+            segments: ALL_SEGMENTS.iter().map(|&kind| Segment { kind, visible: true }).collect(),
         }
     }
 }
 
 impl WidgetSettings {
     fn complete(mut self) -> Self {
-        for default in WidgetSettings::default().widgets {
-            if !self.widgets.iter().any(|w| w.kind == default.kind) {
-                self.widgets.push(default);
+        let mut seen = Vec::new();
+        self.segments.retain(|s| {
+            let fresh = !seen.contains(&s.kind);
+            seen.push(s.kind);
+            fresh
+        });
+        for kind in ALL_SEGMENTS {
+            if !seen.contains(&kind) {
+                self.segments.push(Segment { kind, visible: true });
             }
         }
-        for w in &mut self.widgets {
-            w.opacity = w.opacity.clamp(0.2, 1.0);
-            w.x = w.x.clamp(0.0, 0.98);
-            w.y = w.y.clamp(0.0, 0.98);
-        }
+        self.opacity = self.opacity.clamp(0.2, 1.0);
+        self.x = self.x.clamp(0.0, 1.0);
+        self.y = self.y.clamp(0.0, 0.98);
         self
     }
 }
@@ -219,15 +229,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fills_in_missing_widgets_and_clamps_values() {
+    fn fills_in_missing_segments_and_clamps_values() {
         let saved = WidgetSettings {
             enabled: false,
-            widgets: vec![WidgetConfig { kind: WidgetKind::Farm, visible: false, locked: true, opacity: 0.0, x: 2.0, y: -1.0 }],
+            locked: true,
+            opacity: 0.0,
+            x: 2.0,
+            y: -1.0,
+            segments: vec![
+                Segment { kind: SegmentKind::Farm, visible: false },
+                Segment { kind: SegmentKind::Farm, visible: true },
+            ],
         };
         let s = saved.complete();
+        assert!(!s.enabled && s.locked);
+        assert_eq!((s.opacity, s.x, s.y), (0.2, 1.0, 0.0));
+        assert_eq!(s.segments.len(), ALL_SEGMENTS.len());
+        assert_eq!(s.segments[0], Segment { kind: SegmentKind::Farm, visible: false });
+    }
+
+    #[test]
+    fn old_widget_files_fall_back_to_defaults() {
+        let old = r#"{"enabled":false,"widgets":[{"kind":"farm","visible":true,"locked":false,"opacity":0.9,"x":0.1,"y":0.2}]}"#;
+        let s = serde_json::from_str::<WidgetSettings>(old).unwrap().complete();
         assert!(!s.enabled);
-        assert_eq!(s.widgets.len(), 4);
-        let farm = &s.widgets[0];
-        assert_eq!((farm.visible, farm.locked, farm.opacity, farm.x, farm.y), (false, true, 0.2, 0.98, 0.0));
+        assert_eq!(s.segments.len(), ALL_SEGMENTS.len());
     }
 }

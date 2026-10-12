@@ -1,65 +1,45 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { WidgetConfig } from "./bindings/WidgetConfig";
-import type { WidgetKind } from "./bindings/WidgetKind";
+import type { Segment } from "./bindings/Segment";
+import type { SegmentKind } from "./bindings/SegmentKind";
 import type { WidgetSettings } from "./bindings/WidgetSettings";
 import { native, on } from "./ipc";
 
 export const EDIT_SHORTCUT = "Ctrl+Shift+O";
 
-export const WIDGET_INFO: Record<WidgetKind, { name: string; about: string }> =
+export const SEGMENT_INFO: Record<SegmentKind, { name: string; about: string }> =
   {
+    champion: {
+      name: "Champion",
+      about: "Your champion portrait and level.",
+    },
+    kda: { name: "K / D / A", about: "Your kills, deaths and assists." },
+    farm: { name: "Farm", about: "Your CS and CS per minute." },
     goldLead: {
       name: "Gold lead",
       about: "Your team's item gold against theirs.",
-    },
-    coreItems: {
-      name: "Core items",
-      about: "The usual build for your champion and what's next.",
     },
     objectives: {
       name: "Objectives",
       about: "Dragon, Baron and inhibitor respawns from the game's own events.",
     },
-    farm: { name: "Farm", about: "Your CS and CS per minute." },
+    coreItems: {
+      name: "Core items",
+      about: "The usual build for your champion and what's next.",
+    },
   };
+
+const HOME = { x: 0.5, y: 0.01 };
 
 const PREVIEW: WidgetSettings = {
   enabled: true,
-  widgets: [
-    {
-      kind: "goldLead",
-      visible: true,
-      locked: false,
-      opacity: 0.9,
-      x: 0.44,
-      y: 0.01,
-    },
-    {
-      kind: "objectives",
-      visible: true,
-      locked: false,
-      opacity: 0.9,
-      x: 0.83,
-      y: 0.07,
-    },
-    {
-      kind: "coreItems",
-      visible: true,
-      locked: false,
-      opacity: 0.9,
-      x: 0.005,
-      y: 0.3,
-    },
-    {
-      kind: "farm",
-      visible: true,
-      locked: false,
-      opacity: 0.9,
-      x: 0.005,
-      y: 0.22,
-    },
-  ],
+  locked: false,
+  opacity: 0.9,
+  ...HOME,
+  segments: (Object.keys(SEGMENT_INFO) as SegmentKind[]).map((kind) => ({
+    kind,
+    visible: true,
+  })),
 };
 
 export const widgetApi = {
@@ -92,19 +72,46 @@ export function useWidgetSettings() {
   }, []);
 
   const update = useCallback(
-    (kind: WidgetKind, patch: Partial<WidgetConfig>) => {
+    (patch: Partial<WidgetSettings>) => {
+      if (settings) save({ ...settings, ...patch });
+    },
+    [settings, save],
+  );
+
+  const updateSegment = useCallback(
+    (kind: SegmentKind, patch: Partial<Segment>) => {
       if (!settings) return;
       save({
         ...settings,
-        widgets: settings.widgets.map((w) =>
-          w.kind === kind ? { ...w, ...patch } : w,
+        segments: settings.segments.map((s) =>
+          s.kind === kind ? { ...s, ...patch } : s,
         ),
       });
     },
     [settings, save],
   );
 
-  return { settings, save, update, setLocal: setSettings };
+  const moveSegment = useCallback(
+    (kind: SegmentKind, by: -1 | 1) => {
+      if (!settings) return;
+      const from = settings.segments.findIndex((s) => s.kind === kind);
+      const to = from + by;
+      if (from < 0 || to < 0 || to >= settings.segments.length) return;
+      const segments = [...settings.segments];
+      [segments[from], segments[to]] = [segments[to]!, segments[from]!];
+      save({ ...settings, segments });
+    },
+    [settings, save],
+  );
+
+  return {
+    settings,
+    save,
+    update,
+    updateSegment,
+    moveSegment,
+    setLocal: setSettings,
+  };
 }
 
 export function useWidgetEditing(): boolean {
@@ -120,11 +127,5 @@ export function useWidgetEditing(): boolean {
 }
 
 export function resetLayout(settings: WidgetSettings): WidgetSettings {
-  return {
-    ...settings,
-    widgets: settings.widgets.map((w) => {
-      const home = PREVIEW.widgets.find((p) => p.kind === w.kind);
-      return home ? { ...w, x: home.x, y: home.y } : w;
-    }),
-  };
+  return { ...settings, ...HOME };
 }

@@ -53,7 +53,7 @@ const TOP: Item[] = [
   },
   {
     page: "widgets",
-    label: "In-game widgets",
+    label: "Stats bar",
     icon: (
       <>
         <rect x="3" y="4" width="14" height="12" rx="1.5" />

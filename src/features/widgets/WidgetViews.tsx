@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { InGame } from "../../lib/bindings/InGame";
 import type { InGamePlayer } from "../../lib/bindings/InGamePlayer";
-import type { WidgetKind } from "../../lib/bindings/WidgetKind";
+import type { SegmentKind } from "../../lib/bindings/SegmentKind";
+import { ChampionIcon } from "../../components/ChampionIcon";
 import { championKeyById, itemIcon, useCatalog } from "../../lib/ddragon";
 import {
   dataFile,
@@ -59,23 +60,59 @@ export function findMe(game: InGame): InGamePlayer | undefined {
   );
 }
 
-function Card({
-  children,
-  className = "",
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
+function Label({ children }: { children: ReactNode }) {
   return (
-    <div
-      className={`rounded-lg border border-line-strong bg-ink-950/85 px-3 py-2 text-fg shadow-lg ${className}`}
-    >
+    <span className="flex items-center gap-1 text-[9px] leading-none font-medium tracking-[0.12em] whitespace-nowrap text-muted uppercase">
       {children}
+    </span>
+  );
+}
+
+function Cell({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col justify-center gap-1 px-3.5">
+      <div className="tabular flex items-baseline gap-1.5 text-[14px] leading-none font-semibold whitespace-nowrap text-fg">
+        {children}
+      </div>
+      <Label>{label}</Label>
     </div>
   );
 }
 
 const k = (gold: number) => `${(Math.abs(gold) / 1000).toFixed(1)}k`;
+
+function Champion({ me }: { me: InGamePlayer | undefined }) {
+  const catalog = useCatalog();
+  const id = me ? championKeyById(catalog, me.champion) : null;
+  return (
+    <div className="flex items-center px-2">
+      <div className="relative">
+        <ChampionIcon id={id} size={30} />
+        {me && (
+          <span className="tabular absolute -right-1.5 -bottom-1 min-w-4 rounded-sm bg-crimson px-0.5 text-center text-[9px] leading-[14px] font-semibold text-white">
+            {me.level}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Kda({ me }: { me: InGamePlayer | undefined }) {
+  const kills = me?.kills ?? 0;
+  const deaths = me?.deaths ?? 0;
+  const assists = me?.assists ?? 0;
+  const ratio = deaths ? ((kills + assists) / deaths).toFixed(1) : "perfect";
+  return (
+    <Cell label={`KDA ${ratio}`}>
+      <span>{kills}</span>
+      <span className="text-faint">/</span>
+      <span className="text-crimson-bright">{deaths}</span>
+      <span className="text-faint">/</span>
+      <span>{assists}</span>
+    </Cell>
+  );
+}
 
 function GoldLead({
   game,
@@ -94,28 +131,16 @@ function GoldLead({
   const diff = ours - theirs;
   const share = ours + theirs > 0 ? ours / (ours + theirs) : 0.5;
   return (
-    <Card className="w-[180px]">
-      <div className="tabular flex items-baseline justify-between">
-        <span className="text-[11px] text-muted">Gold lead</span>
-        <span
-          className={`text-[15px] font-semibold ${diff >= 0 ? "text-win" : "text-crimson-bright"}`}
-        >
-          {diff >= 0 ? "+" : "−"}
-          {k(diff)}
-        </span>
-      </div>
-      <div className="mt-1.5 flex h-1 overflow-hidden rounded-full">
-        <div className="bg-win" style={{ width: `${share * 100}%` }} />
-        <div
-          className="bg-crimson"
-          style={{ width: `${(1 - share) * 100}%` }}
-        />
-      </div>
-      <div className="tabular mt-1 flex justify-between text-[10px] text-faint">
-        <span>{k(ours)}</span>
-        <span>{k(theirs)}</span>
-      </div>
-    </Card>
+    <Cell label="Gold lead">
+      <span className={diff >= 0 ? "text-win" : "text-crimson-bright"}>
+        {diff >= 0 ? "+" : "−"}
+        {k(diff)}
+      </span>
+      <span className="flex h-1 w-12 self-center overflow-hidden rounded-full">
+        <span className="bg-win" style={{ width: `${share * 100}%` }} />
+        <span className="flex-1 bg-crimson" />
+      </span>
+    </Cell>
   );
 }
 
@@ -123,18 +148,12 @@ function Farm({ game, me }: { game: InGame; me: InGamePlayer | undefined }) {
   const minutes = game.gameTime / 60;
   const cs = me?.cs ?? 0;
   return (
-    <Card className="tabular flex items-baseline gap-3">
-      <div>
-        <span className="text-[15px] font-semibold">{cs}</span>
-        <span className="ml-1 text-[11px] text-muted">CS</span>
-      </div>
-      <div>
-        <span className="text-[15px] font-semibold">
-          {minutes >= 1 ? (cs / minutes).toFixed(1) : "—"}
-        </span>
-        <span className="ml-1 text-[11px] text-muted">/ min</span>
-      </div>
-    </Card>
+    <Cell label="CS · per min">
+      <span>{cs}</span>
+      <span className="text-[12px] font-medium text-soft">
+        {minutes >= 1 ? (cs / minutes).toFixed(1) : "—"}
+      </span>
+    </Cell>
   );
 }
 
@@ -152,12 +171,14 @@ function Objectives({
   const myTeam = me?.teamId ?? 100;
   if (!game.timers.length)
     return editing ? (
-      <Card className="text-[11px] text-muted">
-        Objective timers show on Summoner's Rift
-      </Card>
+      <Cell label="Objectives">
+        <span className="text-[12px] font-medium text-muted">
+          Summoner's Rift only
+        </span>
+      </Cell>
     ) : null;
   return (
-    <Card className="flex flex-col gap-1">
+    <div className="flex items-center gap-4 px-3.5">
       {game.timers.map((t, i) => {
         const left = t.respawnAt - game.gameTime;
         const tone =
@@ -167,20 +188,22 @@ function Objectives({
               ? "bg-win"
               : "bg-crimson";
         return (
-          <div key={i} className="tabular flex items-center gap-2 text-[12px]">
-            <span className={`h-1.5 w-1.5 rounded-full ${tone}`} />
-            <span className="flex-1 text-soft">
+          <div key={i} className="flex flex-col justify-center gap-1">
+            <span
+              className={`tabular text-[14px] leading-none font-semibold ${left <= 0 ? "text-win" : "text-fg"}`}
+            >
+              {left <= 0 ? "Up" : clock(left)}
+            </span>
+            <Label>
+              <span className={`h-1.5 w-1.5 rounded-full ${tone}`} />
               {t.kind === "inhibitor"
                 ? t.label
                 : (OBJECTIVE[t.kind] ?? t.label)}
-            </span>
-            <span className={`pl-3 ${left <= 0 ? "text-win" : "text-fg"}`}>
-              {left <= 0 ? "up" : clock(left)}
-            </span>
+            </Label>
           </div>
         );
       })}
-    </Card>
+    </div>
   );
 }
 
@@ -239,14 +262,15 @@ function CoreItems({
 
   if (!items.length)
     return (
-      <Card className="text-[11px] text-muted">
-        {me ? "No build data for this champion yet" : "Waiting for the game"}
-      </Card>
+      <Cell label="Core items">
+        <span className="text-[12px] font-medium text-muted">
+          {me ? "No build data yet" : "Waiting for the game"}
+        </span>
+      </Cell>
     );
 
   return (
-    <Card>
-      <div className="mb-1.5 text-[11px] text-muted">Core items</div>
+    <div className="flex flex-col justify-center gap-1 px-3">
       <div className="flex gap-1">
         {items.map((id) => {
           const src = itemIcon(catalog, id);
@@ -255,18 +279,18 @@ function CoreItems({
             <div
               key={id}
               title={catalog?.items[String(id)]}
-              className={`relative h-8 w-8 overflow-hidden rounded bg-ink-800 ${id === next ? "ring-1 ring-crimson" : ""}`}
+              className={`relative h-6 w-6 overflow-hidden rounded-sm bg-ink-800 ${id === next ? "ring-1 ring-crimson-bright" : ""}`}
             >
               {src && (
                 <img
                   src={src}
                   alt=""
                   draggable={false}
-                  className={`h-full w-full ${has ? "opacity-35" : ""}`}
+                  className={`h-full w-full ${has ? "opacity-30 grayscale" : ""}`}
                 />
               )}
               {has && (
-                <span className="absolute inset-0 flex items-center justify-center text-[13px] text-fg">
+                <span className="absolute inset-0 flex items-center justify-center text-[11px] text-fg">
                   ✓
                 </span>
               )}
@@ -275,41 +299,71 @@ function CoreItems({
         })}
       </div>
       {next !== undefined && cost > 0 && (
-        <div className="tabular mt-1.5 text-[11px] text-muted">
-          <span className="text-soft">
-            {catalog?.items[String(next)] ?? "Next item"}
-          </span>{" "}
-          · {game.myGold}/{cost}g
-          <div className="mt-1 h-1 overflow-hidden rounded-full bg-ink-700">
-            <div
-              className={`h-full ${game.myGold >= cost ? "bg-win" : "bg-crimson"}`}
-              style={{ width: `${Math.min(100, (game.myGold / cost) * 100)}%` }}
-            />
-          </div>
+        <div
+          className="h-0.5 overflow-hidden rounded-full bg-ink-700"
+          title={`${catalog?.items[String(next)] ?? "Next item"} · ${game.myGold}/${cost}g`}
+        >
+          <div
+            className={`h-full ${game.myGold >= cost ? "bg-win" : "bg-crimson"}`}
+            style={{ width: `${Math.min(100, (game.myGold / cost) * 100)}%` }}
+          />
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 
-export function WidgetView({
+function SegmentView({
   kind,
   game,
+  me,
   editing,
 }: {
-  kind: WidgetKind;
+  kind: SegmentKind;
   game: InGame;
+  me: InGamePlayer | undefined;
   editing: boolean;
 }) {
-  const me = findMe(game);
   switch (kind) {
-    case "goldLead":
-      return <GoldLead game={game} me={me} />;
+    case "champion":
+      return <Champion me={me} />;
+    case "kda":
+      return <Kda me={me} />;
     case "farm":
       return <Farm game={game} me={me} />;
+    case "goldLead":
+      return <GoldLead game={game} me={me} />;
     case "objectives":
       return <Objectives game={game} me={me} editing={editing} />;
     case "coreItems":
       return <CoreItems game={game} me={me} />;
   }
+}
+
+export function StatsBar({
+  segments,
+  game,
+  editing,
+}: {
+  segments: SegmentKind[];
+  game: InGame;
+  editing: boolean;
+}) {
+  const me = findMe(game);
+  return (
+    <div className="flex h-12 items-stretch overflow-hidden rounded-lg border border-line-strong bg-ink-950/90 shadow-[0_6px_20px_rgb(0_0_0/0.45)]">
+      <div className="w-[3px] shrink-0 bg-crimson" />
+      <div className="flex items-stretch divide-x divide-line-strong py-2 pr-1">
+        {segments.map((kind) => (
+          <SegmentView
+            key={kind}
+            kind={kind}
+            game={game}
+            me={me}
+            editing={editing}
+          />
+        ))}
+      </div>
+    </div>
+  );
 }
