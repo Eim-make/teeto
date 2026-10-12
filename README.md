@@ -1,5 +1,7 @@
 # Teeto
 
+Active WIP, especially while I deal with Rito reviewing the application + necessary additions / removals.
+
 Teeto is a small companion app for League of Legends on Windows. It sits next to your League client and gives you useful info before, during and after your games. It's free, has no ads, and doesn't need an account.
 
 ## Getting started
